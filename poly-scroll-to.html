@@ -1,0 +1,351 @@
+<!-- polymer -->
+<link rel="import" href="../polymer/polymer.html">
+<link rel="import" href="../poly-vendor-urijs/poly-vendor-urijs.html">
+<link rel="import" href="../poly-behavior-easing/poly-behavior-easing.html">
+
+<!--
+`<poly-scroll-to>` provides a quick and easy anchor scrolling (or "scroll to") behavior for
+[Polymer](https://polymer-project.org) based projects.
+
+To use the plugin just include it once in your page (preferably right after the opening `<body>` tag), then trigger
+it by navigating the browser to any URL matching the `urlDelimiter` schema.
+
+@demo
+-->
+<dom-module id="poly-scroll-to">
+    <template>
+
+    </template>
+</dom-module>
+
+<script>
+    Polymer({
+        is: 'poly-scroll-to',
+
+        behaviors: [
+            Poly.EasingBehavior
+        ],
+
+        properties: {
+            /**
+             * You can use this to specify a portion of a URL which, if found, will trigger the component.
+             *
+             * The value **must** start with a hash `#`.
+             *
+             * By default, anything after `#!scroll=` in a URL will be parsed as a query string, where anything up to
+             * the first occurrence of a `&` will be treated as value for the `scroll` argument.
+             *
+             * For example, a URL like this: `index.html#!scroll=top&arg2=value2` will be parsed into
+             * `{"scroll": "top", "arg2": "value2"}`.
+             *
+             * The `scroll` argument will be the scroll target and the rest of the arguments will be used to override
+             * the default values of any parameter of this component marked as a *Configuration Option*.
+             *
+             * For example, to override the scroll duration you can use something like this:
+             * `index.html#!scroll=~bottom&duration=500`.
+             *
+             * The `scroll` target can be one of:
+             * - `~top` - to scroll to the document top (equivalent to `0`)
+             * - `~bottom` - to scroll to the document end
+             * - An `integer` - to scroll to the exact offset from the top of the document (in pixels)
+             * - A `string` - to scroll to an element (in the DOM) with the same value for the `id` attribute
+             */
+            urlDelimiter: {
+                type: String,
+                value: '#!scroll='
+            },
+
+            /**
+             * *Configuration Option*.
+             * Specify the default duration (in seconds) a scroll animation should run.
+             */
+            duration: {
+                type: Number,
+                value: 1000
+            },
+
+            /**
+             * *Configuration Option*.
+             * Specify easing to be used for the scrolling animation. It can either be a preset name or a
+             * bezier curve array. For more info see [poly-behavior-easing](https://tonybogdanov.github.io/poly-behavior-easing/bower_components/poly-behavior-easing).
+             */
+            easing: {
+                type: Object,
+                value: 'swift'
+            },
+
+            /**
+             * Set this to `TRUE` to disable the component. This flag will also be used to prevent running multiple
+             * instances in a single document to avoid collisions.
+             */
+            disabled: {
+                type: Boolean,
+                value: false
+            },
+
+            /**
+             * Set to `TRUE` while a scroll animation is running to interrupt it.
+             */
+            _interrupted: {
+                type: Boolean,
+                value: false
+            },
+
+            /**
+             * An array of event names on which to interrupt scroll animations.
+             */
+            _interruptEvents: {
+                type: Array,
+                value: ['mousedown', 'wheel', 'DOMMouseScroll', 'mousewheel', 'keyup', 'touchmove']
+            }
+        },
+
+        /**
+         * Returns the height of the document at the time of invocation.
+         */
+        _getDocumentHeight: function() {
+            return Math.max(
+                document.body.scrollHeight,
+                document.body.offsetHeight,
+                document.documentElement.clientHeight,
+                document.documentElement.scrollHeight,
+                document.documentElement.offsetHeight
+            );
+        },
+
+        /**
+         * Returns the height of the viewport at the time of invocation.
+         */
+        _getViewportHeight: function() {
+            return window.innerHeight || document.documentElement.clientHeight || document.body.clientHeight;
+        },
+
+        /**
+         * Returns the offset (top position) of an element in the DOM relative to the document.
+         */
+        _getElementOffset: function(element) {
+            return Math.round(
+                element.getBoundingClientRect().top +
+                (window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop) -
+                (document.documentElement.clientTop || document.body.clientTop || 0)
+            );
+        },
+
+        /**
+         * Starts listening for events that should interrupt scroll animations.
+         */
+        _startListeningForInterruptions: function() {
+            for(var i in this._interruptEvents) {
+                if(this._interruptEvents.hasOwnProperty(i)) {
+                    this.listen(document, this._interruptEvents[i], 'stop');
+                }
+            }
+        },
+
+        /**
+         * Stops listening for events that should interrupt scroll animations.
+         */
+        _stopListeningForInterruptions: function() {
+            for(var i in this._interruptEvents) {
+                if(this._interruptEvents.hasOwnProperty(i)) {
+                    this.unlisten(document, this._interruptEvents[i], 'stop');
+                }
+            }
+        },
+
+        /**
+         * Runs `scrollForDocumentHash()`, but mutes promise rejections.
+         */
+        _scrollForDocumentHash: function() {
+            this.scrollForDocumentHash().catch(function() {});
+        },
+
+        /**
+         * Runs `scrollForHash()` for the current document location hash.
+         */
+        scrollForDocumentHash: function() {
+            return this.scrollForHash(document.location.hash);
+        },
+
+        /**
+         * Performs a scroll for the specified hash string.
+         *
+         * Hashes which do not match the URL delimiter will be ignored.
+         *
+         * Example: `scrollForHash("#!scroll=~top")`.
+         *
+         * @param hash
+         * @return Promise
+         */
+        scrollForHash: function(hash) {
+            // ignore hashes not matching the URL delimiter
+            if('string' !== typeof hash || -1 === hash.indexOf(this.urlDelimiter)) {
+                return Promise.reject('invalid_hash');
+            }
+
+            // parse the query string
+            return this.scrollForQuery((new URI('?scroll=' + hash.split(this.urlDelimiter)[1])).query(true));
+        },
+
+        /**
+         * Performs a scroll for the specified query object. The object **must** have a `scroll` key with a
+         * valid string value.
+         *
+         * Example: `scrollForQuery({"scroll": "~top"})`.
+         *
+         * @param query
+         * @return Promise
+         */
+        scrollForQuery: function(query) {
+            // validate the query
+            if('object' !== typeof query || 'string' !== typeof query.scroll) {
+                return Promise.reject('invalid_query');
+            }
+
+            // determine the scroll target as a distance of the document's top in pixels
+            // note that this does **not** represent the actual travel distance or direction
+            var target;
+            switch(true) {
+                // top of the document
+                case '~top' === query.scroll:
+                    target = 0;
+                    break;
+
+                // bottom of the document
+                case '~bottom' === query.scroll:
+                    target = this._getDocumentHeight();
+                    break;
+
+                // a specific offset
+                case !isNaN(parseInt(query.scroll)):
+                    target = parseInt(query.scroll);
+                    break;
+
+                // section id
+                case null !== (target = document.getElementById(query.scroll)):
+                    target = this._getElementOffset(target);
+                    break;
+
+                default:
+                    console.warn('Element with ID', query.scroll, 'not found in the DOM. Scrolling aborted.');
+                    return Promise.reject('invalid_id');
+            }
+
+            // confine target to upper and lower bounds of possible scroll values
+            target = Math.max(0, Math.min(this._getDocumentHeight() - this._getViewportHeight(), target));
+
+            // bail early if the document is already at the target position
+            if(document.body.scrollTop === target) {
+                return Promise.resolve();
+            }
+
+            // scroll
+            return this.scroll(document.body.scrollTop, target, query);
+        },
+
+        /**
+         * Performs a page scroll from (and to) the specified offsets in pixels.
+         * Uses the specified `config` object to determine easing, duration etc. If the value is not a valid object,
+         * or if any of the parameters are missing or invalid, the default ones are used.
+         *
+         * @param from
+         * @param to
+         * @param config
+         * @return Promise
+         */
+        scroll: function(from, to, config) {
+            // validate config
+            if('object' !== typeof config) {
+                config = {};
+            }
+
+            // validate duration
+            if('number' !== typeof config.duration && isNaN(parseInt(config.duration))) {
+                config.duration = this.duration;
+            } else {
+                config.duration = parseInt(config.duration);
+            }
+
+            // prepare loop
+            var start = Date.now();
+            var end = start + config.duration;
+            var ease = this.createEasing(from, to, this.easing);
+
+            // scroll
+            return new Promise(function(resolve, reject) {
+                // keep track of current scroll position for user scroll interruptions
+                var previous = document.body.scrollTop;
+
+                // start the loop
+                var loop;
+                this._startListeningForInterruptions();
+                this._interrupted = false;
+                requestAnimationFrame(loop = function() {
+                    // user interruptions
+                    if(this._interrupted || document.body.scrollTop !== previous) {
+                        this._stopListeningForInterruptions();
+                        reject('interrupted');
+                        return;
+                    }
+
+                    // determine progress
+                    var now = Date.now();
+                    var travel = Math.round(ease((now - start) / config.duration));
+
+                    // scroll
+                    document.body.scrollTop = travel;
+
+                    // end reached?
+                    if(now >= end) {
+                        this._stopListeningForInterruptions();
+                        resolve();
+                        return;
+                    }
+
+                    // if scrolling was supposed to occur, but didn't, probably the limit was hit, consider it done
+                    if(document.body.scrollTop === previous && document.body.scrollTop !== travel) {
+                        this._stopListeningForInterruptions();
+                        resolve();
+                        return;
+                    }
+
+                    // loop
+                    previous = document.body.scrollTop;
+                    requestAnimationFrame(loop);
+                }.bind(this));
+            }.bind(this));
+        },
+
+        /**
+         * Interrupts ongoing scroll animations.
+         */
+        stop: function() {
+            this._interrupted = true;
+        },
+
+        created: function() {
+            // ensure only a single instance will run for the current document
+            if(true === window.__polyScrollTo) {
+                this.disabled = true;
+            }
+            window.__polyScrollTo = true;
+        },
+
+        ready: function() {
+            // ensure only a single instance will run for the current document
+            if(this.disabled) {
+                return;
+            }
+
+            // listen for hash changes
+            this.listen(window, 'hashchange', '_scrollForDocumentHash');
+
+            // trigger an initial hash check
+            if('complete' === document.readyState) {
+                this._scrollForDocumentHash();
+            } else {
+                this.listen(window, 'load', '_scrollForDocumentHash');
+            }
+        }
+    });
+</script>

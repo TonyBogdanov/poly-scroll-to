@@ -1,0 +1,28 @@
+{
+  "name": "poly-scroll-to",
+  "homepage": "https://github.com/TonyBogdanov/poly-scroll-to",
+  "authors": [
+    "Tony Bogdanov <tonybogdanov@gmail.com>"
+  ],
+  "description": "A Polymer element for smooth anchor scrolling",
+  "keywords": [
+    "web-components"
+  ],
+  "main": "poly-scroll-to.html",
+  "license": "MIT",
+  "ignore": [
+    "**/.*",
+    "node_modules",
+    "bower_components",
+    "test",
+    "tests"
+  ],
+  "dependencies": {
+    "polymer": "^1.6.1",
+    "poly-vendor-urijs": "*",
+    "poly-behavior-easing": "*"
+  },
+  "devDependencies": {
+    "iron-component-page": "^1.1.7"
+  }
+}
