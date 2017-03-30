@@ -1,0 +1,35 @@
+{
+  "name": "poly-behavior-easing",
+  "homepage": "https://github.com/TonyBogdanov/poly-behavior-easing",
+  "authors": [
+    "Tony Bogdanov <tonybogdanov@gmail.com>"
+  ],
+  "description": "A Polymer behavior for value interpolation using bezier curves",
+  "keywords": [
+    "web-components"
+  ],
+  "main": "poly-behavior-easing.html",
+  "license": "MIT",
+  "ignore": [
+    "**/.*",
+    "node_modules",
+    "bower_components",
+    "test",
+    "tests"
+  ],
+  "dependencies": {
+    "polymer": "^1.6.1"
+  },
+  "devDependencies": {
+    "iron-component-page": "^1.1.7"
+  },
+  "_release": "78b1b8f928",
+  "_resolution": {
+    "type": "branch",
+    "branch": "master",
+    "commit": "78b1b8f928bca178dadaf269b0150bba11cedb92"
+  },
+  "_source": "https://github.com/TonyBogdanov/poly-behavior-easing.git",
+  "_target": "*",
+  "_originalSource": "poly-behavior-easing"
+}

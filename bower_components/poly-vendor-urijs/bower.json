@@ -1,0 +1,23 @@
+{
+  "name": "poly-vendor-urijs",
+  "homepage": "https://github.com/TonyBogdanov/poly-vendor-urijs",
+  "authors": [
+    "Tony Bogdanov <tonybogdanov@gmail.com>"
+  ],
+  "description": "Unambiguous loading of URI.js",
+  "keywords": [
+    "web-components"
+  ],
+  "main": "poly-vendor-urijs.html",
+  "license": "MIT",
+  "ignore": [
+    "**/.*",
+    "node_modules",
+    "bower_components",
+    "test",
+    "tests"
+  ],
+  "dependencies": {
+    "urijs": "^1.18.2"
+  }
+}

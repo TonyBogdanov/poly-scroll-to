@@ -1,0 +1,193 @@
+<!-- Dependencies -->
+<link rel="import" href="../polymer/polymer.html">
+
+<script>
+    window.Poly = window.Poly || {};
+
+    /**
+     * `Poly.EasingBehavior` provides a [Polymer](https://polymer-project.org)
+     * [behavior](https://www.polymer-project.org/1.0/docs/devguide/behaviors) for value interpolation using
+     * [bezier curves](https://en.wikipedia.org/wiki/B%C3%A9zier_curve).
+     *
+     * Call `createEasing()` to generate your interpolator (a function) and then pass a value in the range [0; 1]
+     * to interpolate it and retrieve its corresponding projection value in the range [`minValue`; `maxValue`].
+     *
+     * @polymerBehavior Poly.EasingBehavior
+     * @demo demo/index.html
+     */
+    Poly.EasingBehavior = {
+        properties: {
+            /**
+             * Use this to select from or add new easing presets.
+             * Keys are preset names and value must be a bezier curve (an array with 4 numbers).
+             */
+            easingPresets: {
+                type: Object,
+                value: function() {
+                    return {
+                        'linear':       [0, 0, 1, 1],
+                        'swift':        [0.55, 0, 0.1, 1],
+                        'ease':         [0.25, 0.1, 0.25, 1],
+                        'ease-in':      [0.42, 0, 1, 1],
+                        'ease-out':     [0, 0, 0.58, 1],
+                        'ease-in-out':  [0.42, 0, 0.58, 1]
+                    };
+                }
+            },
+
+            _cfg: {
+                type: Object,
+                value: function() {
+                    return {
+                        NEWTON_ITERATIONS: 4,
+                        NEWTON_MIN_SLOPE: 0.001,
+                        SUBDIVISION_PRECISION: 0.0000001,
+                        SUBDIVISION_MAX_ITERATIONS: 10,
+
+                        float32ArraySupported: 'Float32Array' in this,
+                        kSplineTableSize: 11,
+                        kSampleStepSize: 0.1 // 1 / (kSplineTableSize - 1)
+                    };
+                }
+            }
+        },
+
+        _a: function(a1, a2) {
+            return 1 - 3 * a2 + 3 * a1;
+        },
+
+        _b: function(a1, a2) {
+            return 3 * a2 - 6 * a1;
+        },
+
+        _c: function(a1) {
+            return 3 * a1;
+        },
+
+        _calculateBezier: function(t, a1, a2) {
+            return ((this._a(a1, a2) * t + this._b(a1, a2)) * t + this._c(a1)) * t;
+        },
+
+        _getSlope: function(t, a1, a2) {
+            return 3 * this._a(a1, a2) * t * t + 2 * this._b(a1, a2) * t + this._c(a1);
+        },
+
+        _newtonRaphsonIterate: function(value, guessForT, x1, x2) {
+            var currentSlope, currentValue;
+            for(var i = 0; i < this._cfg.NEWTON_ITERATIONS; i++) {
+                currentSlope = this._getSlope(guessForT, x1, x2);
+                if(0 === currentSlope) {
+                    return guessForT;
+                }
+                currentValue = this._calculateBezier(guessForT, x1, x2) - value;
+                guessForT -= currentValue / currentSlope;
+            }
+            return guessForT;
+        },
+
+        _binarySubDivide: function(value, a, b, x1, x2) {
+            var currentValue, currentT, i = 0;
+            do {
+                currentT = a + (b - a) / 2;
+                currentValue = this._calculateBezier(currentT, x1, x2) - value;
+                if(currentValue > 0) {
+                    b = currentT;
+                } else {
+                    a = currentT;
+                }
+            } while(Math.abs(currentValue) > this._cfg.SUBDIVISION_PRECISION && ++i < this._cfg.SUBDIVISION_MAX_ITERATIONS);
+            return currentT;
+        },
+
+        _getTForValue: function(value, x1, x2, mSampleValues) {
+            var intervalStart = 0;
+            var currentSample = 1;
+            var lastSample = this._cfg.kSplineTableSize - 1;
+
+            for(; currentSample !== lastSample && mSampleValues[currentSample] <= value; ++currentSample) {
+                intervalStart += this._cfg.kSampleStepSize;
+            }
+            --currentSample;
+
+            var dist = (value - mSampleValues[currentSample]) / (mSampleValues[currentSample + 1] -
+                mSampleValues[currentSample]);
+            var guessForT = intervalStart + dist * this._cfg.kSampleStepSize;
+            var initialSlope = this._getSlope(guessForT, x1, x2);
+
+            if(initialSlope >= this._cfg.NEWTON_MIN_SLOPE) {
+                return this._newtonRaphsonIterate(value, guessForT, x1, x2);
+            } else if(0 === initialSlope) {
+                return guessForT;
+            } else {
+                return this._binarySubDivide(value, intervalStart, intervalStart + this._cfg.kSampleStepSize, x1, x2);
+            }
+        },
+
+        /**
+         * Creates a new easing interpolator using the specified minimum and maximum values as a possible value range.
+         * The interpolation argument must be a string name of a predefined preset (see `easingPresets`) or a
+         * cubic bezier definition (an array with 4 numbers).
+         *
+         * @param minValue
+         * @param maxValue
+         * @param interpolation
+         * @return {Function}
+         */
+        createEasing: function(minValue, maxValue, interpolation) {
+            // interpolation should be either a valid preset name or an array with 4 numbers (cubic bezier)
+            if('string' === typeof interpolation) {
+                if(!this.easingPresets.hasOwnProperty(interpolation)) {
+                    throw "Interpolation name: " + interpolation + " not found in presets";
+                }
+                interpolation = this.easingPresets[interpolation];
+            } else if(
+                'object' !== typeof interpolation ||
+                !interpolation.hasOwnProperty(0) || isNaN(interpolation[0]) || !isFinite(interpolation[0]) ||
+                !interpolation.hasOwnProperty(1) || isNaN(interpolation[1]) || !isFinite(interpolation[1]) ||
+                !interpolation.hasOwnProperty(2) || isNaN(interpolation[2]) || !isFinite(interpolation[2]) ||
+                !interpolation.hasOwnProperty(3) || isNaN(interpolation[3]) || !isFinite(interpolation[3])
+            ) {
+                throw "Invalid interpolation, must either be a string name or an array of 4 numerical values (cubic bezier)";
+            }
+
+            // curve
+            var x1 = interpolation[0];
+            var y1 = interpolation[1];
+            var x2 = interpolation[2];
+            var y2 = interpolation[3];
+
+            // init sample values
+            var mSampleValues = this.float32ArraySupported ? new Float32Array(this.kSplineTableSize) :
+                new Array(this.kSplineTableSize);
+            var precomputed = false;
+
+            // interpolator
+            return function(value) {
+                // pre-compute sample values
+                if(!precomputed) {
+                    precomputed = true;
+                    if(x1 !== y1 || x2 !== y2) {
+                        for(var i = 0; i < this._cfg.kSplineTableSize; i++) {
+                            mSampleValues[i] = this._calculateBezier(i * this._cfg.kSampleStepSize, x1, x2);
+                        }
+                    }
+                }
+
+                // linear?
+                if(x1 === y1 && x2 === y2) {
+                    return minValue + (value * (maxValue - minValue));
+                }
+                if(0 === value) {
+                    return minValue;
+                }
+                if(1 === value) {
+                    return maxValue;
+                }
+
+                // curve
+                return minValue + (this._calculateBezier(this._getTForValue(value, x1, x2, mSampleValues), y1, y2) *
+                    (maxValue - minValue));
+            }.bind(this);
+        }
+    };
+</script>

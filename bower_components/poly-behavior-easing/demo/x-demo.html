@@ -1,0 +1,76 @@
+<!-- Dependencies -->
+<link rel="import" href="../../polymer/polymer.html">
+<link rel="import" href="../poly-behavior-easing.html">
+
+<dom-module id="x-demo">
+    <template>
+        <h1>[[name]]</h1>
+        <div style="width:-webkit-calc(100% - 64px);width:calc(100% - 64px);height:64px;position:relative;background:#eee;">
+            <div style="position:absolute;top:0;left:100%;width:64px;height:64px;background:#eee"></div>
+            <div id="ani" style$="position:absolute;top:0;left:0;width:64px;height:64px;background:#[[color]]"></div>
+        </div>
+    </template>
+</dom-module>
+
+<script>
+    Polymer({
+        is: 'x-demo',
+
+        properties: {
+            colors: {
+                type: Array,
+                value: ['F44336', 'E91E63', '9C27B0', '673AB7', '3F51B5', '2196F3', '03A9F4', '00BCD4', '009688',
+                    '4CAF50', '8BC34A', 'CDDC39', 'FFEB3B', 'FFC107', 'FF9800', 'FF5722', '795548', '607D8B']
+            },
+
+            name: {
+                type: String
+            },
+
+            color: {
+                type: String,
+                computed: '_computeColor(colors)'
+            },
+
+            start: {
+                type: Number,
+                value: 0
+            },
+
+            easing: {
+                type: String
+            },
+
+            ease: {
+                type: Function
+            }
+        },
+
+        behaviors: [
+            Poly.EasingBehavior
+        ],
+
+        _computeColor: function() {
+            return this.colors[window.COLOR_COUNT++ % this.colors.length];
+        },
+
+        _loop: function() {
+            this.$.ani.style.left = this.ease(Math.min(1, ((Date.now() - this.start)) / 1000 % 1.5)) + '%';
+            requestAnimationFrame(this._loop.bind(this));
+        },
+
+        _start: function() {
+            this.start = Date.now();
+            this.ease = this.createEasing(0, 100, this.easing);
+            requestAnimationFrame(this._loop.bind(this));
+        },
+
+        ready: function() {
+            if('complete' === document.readyState) {
+                this._start();
+            } else {
+                window.addEventListener('load', this._start.bind(this));
+            }
+        }
+    });
+</script>
